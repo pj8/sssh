@@ -1,0 +1,203 @@
+#!/bin/bash
+
+############################################################################
+#   Copyright 2022 Yuki Adachi https://github.com/yuki777
+#
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
+############################################################################
+
+# Bash script to run ecs-exec on Amazon ECS Fargate containers.
+#
+# Usage: See --help.
+#
+# Installation and Update: Download the script and `chmod u+x the script`.
+#  curl "https://gist.githubusercontent.com/yuki777/e6feba842934e3100ecd45370969a9a9/raw/sssh?clearCache=`date +%Y%m%d%H%M%S`" -o sssh && chmod u+x sssh
+#  ./sssh
+#
+# Prerequisites (validated)
+# - aws cli
+# - session-manager-plugin
+# - jq
+# - peco
+#
+# Special thanks to contributor
+# - leewc
+
+set -eu
+
+params(){
+  echo "$(profileParam) $(regionParam)"
+}
+
+profileParam() {
+  [[ $profile ]] &>/dev/null && echo "--profile $profile"
+}
+
+regionParam() {
+  [[ $region ]] &>/dev/null && echo "--region $region"
+}
+
+colorEcho(){
+  red='\033[0;31m'
+  green='\033[0;32m'
+  yellow='\033[0;33m'
+  reset='\033[0m'
+
+  if echo $@ | egrep -q "prd|prod|production"; then
+    color=$red
+  elif echo $@ | egrep -q "stg|stage|staging|beta|devo"; then
+    color=$yellow
+  else
+    color=$green
+  fi
+
+  echo -e "${color}$@${reset}"
+}
+
+echo_stderr() {
+  echo -e "$@" >&2
+}
+
+die() {
+  echo_stderr "$@"
+  exit 1
+}
+
+validatePrereq() {
+  command -v peco  &>/dev/null || die "peco not installed on host. Please install peco. See https://github.com/peco/peco#installation"
+  command -v jq  &>/dev/null || die "jq not installed on host. Please install jq. See https://stedolan.github.io/jq/download/"
+  command -v session-manager-plugin &>/dev/null || die "session-manager-plugin not installed. See https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html"
+  command -v aws &>/dev/null || die "AWS CLI not found, AWS CLI version 1.16.12 or later must be installed. See https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html"
+  # Checks if AWS CLI is outdated or not., v1 of AWS CLI pipes to std error, redirect
+  AWS_CLI_VERSION=$(aws --version 2>&1 | awk '{ print $1 }' | cut -d/ -f2)
+  echo_stderr "You have AWS CLI v$AWS_CLI_VERSION installed."
+  # Do a best effort check for v1 (so that it's at least 1.10 and up.
+  [[ $AWS_CLI_VERSION =~ ^1.1[0-9] || $AWS_CLI_VERSION =~ ^2 ]] &>/dev/null || die "AWS CLI version 1.16.12 or later must be installed to support ecs-exec, Run 'aws --version' to see what you have. See https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html"
+}
+
+function print_help() {
+  cat >&2 <<-END
+This script simplifies the process of getting the required information to drop into an
+interactive shell script on your container hosted on Fargate/ECS.
+Example:
+./sssh --region us-west-2
+./sssh --profile default
+Supported input parameters:
+ -r | --region     : AWS Region to fetch the cluster, service, task
+ -p | --profile    : AWS Profile for credentials and region.
+ -c | --command    : Command to execute, defaults to '/bin/sh'/
+      --port       : Port number for port forward.
+      --local-port : Local port number for port forward.
+The default command executed on the selected container is '/bin/sh'.
+If a region is not provided, the script will attempt to use your region set in the profile.
+If you want to execute a different command or shell, you can pass it in like so:
+./sssh --command '/bin/bash'
+You need active (unexpired) AWS credentials, otherwise, the script will crash.
+Updates on https://gist.github.com/yuki777/e6feba842934e3100ecd45370969a9a9
+END
+}
+
+main(){
+  command='/bin/sh'
+  while [[ "$#" -gt 0 ]]; do
+    case $1 in
+      -h|--help)
+        print_help
+        exit
+        ;;
+      -v|--version)
+        echo "sssh version v2.15"
+        exit
+        ;;
+      -r|--region)
+        shift
+        region="${1:?Region must be specified in --region}"
+        shift
+        ;;
+      -p|--profile)
+        shift
+        profile="${1:?Profile must be specified in --profile}"
+        shift
+        ;;
+      -c|--command)
+        shift
+        command="${1:?Command must be specified in --command}"
+        shift
+        ;;
+      --port)
+        shift
+        port="${1:?port must be specified in --port}"
+        shift
+        ;;
+      --local-port)
+        shift
+        localPort="${1:?local-port must be specified in --local-port}"
+        shift
+        ;;
+      *)
+        die "Unknown param $1"
+        ;;
+    esac
+  done
+
+  date
+
+  echo_stderr "Validating pre-requisites...."
+  validatePrereq
+
+  # spaces matter :)
+  if [[ $AWS_CLI_VERSION =~ ^2 ]] ; then
+    echo_stderr "Select AWS Profile"
+    if [ -z ${profile+x} ]; then
+      profile=$(aws configure list-profiles|peco --on-cancel=error --select-1 --prompt="AWS Profile:")
+    fi
+    colorEcho Profile: $profile
+  else echo_stderr "[INFO] AWS CLI is not v2, unable to select profile. --region or --profile must be set."
+  fi
+  echo_stderr
+
+  echo_stderr "Select cluster."
+  cluster=$(aws ecs list-clusters $(params)|jq -r ".clusterArns[]"|sort|cut -d "/" -f 2|peco --on-cancel=error --select-1 --prompt="Cluster:")
+  colorEcho Cluster: $cluster
+  echo_stderr
+
+  echo_stderr "Select service."
+  service=$(aws ecs list-services $(params) --cluster $cluster|jq -r ".serviceArns[]"|sort|peco --on-cancel=error --select-1 --prompt="Service:")
+  colorEcho Service: $service
+  echo_stderr
+
+  echo_stderr "Select task."
+  task=$(aws ecs list-tasks $(params) --cluster $cluster --service-name $service --desired-status RUNNING |jq -r '.taskArns[]'|sort|peco --on-cancel=error --select-1 --prompt="Task:")
+  colorEcho Task: $task
+  echo_stderr
+
+  echo_stderr "Select container."
+  container=$(aws ecs describe-tasks $(params) --cluster $cluster --tasks $task | jq -r ".tasks[].containers[].name"|sort|peco --on-cancel=error --select-1 --prompt="Container:")
+  colorEcho Container: $container
+  echo_stderr
+
+  # Both port and localPort parameters are not supplied.
+  if [ -z ${port+x} ] && [ -z ${localPort+x} ]; then
+    cmd="aws ecs execute-command $(params) --cluster $cluster --container $container --task $task --interactive --command '$command'"
+  else
+    taskId=$(echo $task | awk -F '/' '{print $3}')
+    containerId=$(aws ecs describe-tasks $(params) --cluster $cluster --task $task | jq -r --arg container $container '.tasks[0].containers[] | select(.name == $container).runtimeId')
+    cmd="aws ssm start-session $(params) --target ecs:${cluster}_${taskId}_${containerId} --document-name AWS-StartPortForwardingSession --parameters {\"portNumber\":[\"$port\"],\"localPortNumber\":[\"$localPort\"]}"
+  fi
+
+  colorEcho $cmd
+  $cmd
+}
+
+# Execute main function and pass all params over
+main $@
