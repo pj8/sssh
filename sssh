@@ -20,20 +20,33 @@
 #
 # Usage: See --help.
 #
-# Installation and Update: Download the script and `chmod u+x the script`.
-#  curl "https://gist.githubusercontent.com/yuki777/e6feba842934e3100ecd45370969a9a9/raw/sssh?clearCache=`date +%Y%m%d%H%M%S`" -o sssh && chmod u+x sssh
+# Installation: Download the script and `chmod u+x the script`.
+#  curl "https://gist.githubusercontent.com/yuki777/640cba3e0a68587c36165b8a87d25390/raw/sssh?clearCache=`date +%Y%m%d%H%M%S`" -o sssh && chmod u+x sssh
 #  ./sssh
 #
 # Prerequisites (validated)
 # - aws cli
 # - session-manager-plugin
 # - jq
-# - peco
 #
 # Special thanks to contributor
 # - leewc
 
 set -eu
+
+selectProfile(){
+  # profile parameter not supplied.
+  if [ -z ${profile+x} ]; then
+    # only works with AWS CLIv2.
+    select selected in `aws configure list-profiles`
+    do
+      break
+    done
+    echo $selected
+  else
+    echo $profile
+  fi
+}
 
 params(){
   echo "$(profileParam) $(regionParam)"
@@ -45,6 +58,38 @@ profileParam() {
 
 regionParam() {
   [[ $region ]] &>/dev/null && echo "--region $region"
+}
+
+selectCluster(){
+  select selected in $(aws ecs list-clusters $(params)|jq -r ".clusterArns[]"|sort|cut -d "/" -f 2)
+  do
+    break
+  done
+  echo $selected
+}
+
+selectService(){
+  select selected in $(aws ecs list-services $(params) --cluster $cluster|jq -r ".serviceArns[]"|sort)
+  do
+    break
+  done
+  echo $selected
+}
+
+selectTask(){
+  select selected in $(aws ecs list-tasks $(params) --cluster $cluster --service-name $service --desired-status RUNNING |jq -r '.taskArns[]'|sort)
+  do
+    break
+  done
+  echo $selected
+}
+
+selectContainer(){
+  select selected in $(aws ecs describe-tasks $(params) --cluster $cluster --tasks $task | jq -r ".tasks[].containers[].name"|sort)
+  do
+    break
+  done
+  echo $selected
 }
 
 colorEcho(){
@@ -74,7 +119,6 @@ die() {
 }
 
 validatePrereq() {
-  command -v peco  &>/dev/null || die "peco not installed on host. Please install peco. See https://github.com/peco/peco#installation"
   command -v jq  &>/dev/null || die "jq not installed on host. Please install jq. See https://stedolan.github.io/jq/download/"
   command -v session-manager-plugin &>/dev/null || die "session-manager-plugin not installed. See https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html"
   command -v aws &>/dev/null || die "AWS CLI not found, AWS CLI version 1.16.12 or later must be installed. See https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html"
@@ -103,7 +147,7 @@ If a region is not provided, the script will attempt to use your region set in t
 If you want to execute a different command or shell, you can pass it in like so:
 ./sssh --command '/bin/bash'
 You need active (unexpired) AWS credentials, otherwise, the script will crash.
-Updates on https://gist.github.com/yuki777/e6feba842934e3100ecd45370969a9a9
+Updates on https://gist.githubusercontent.com/leewc/e4c3a16551b06c2b0b4640fa5a3d9c00
 END
 }
 
@@ -116,7 +160,7 @@ main(){
         exit
         ;;
       -v|--version)
-        echo "sssh version v2.15"
+        echo "sssh version v1.14"
         exit
         ;;
       -r|--region)
@@ -150,40 +194,36 @@ main(){
     esac
   done
 
-  date
-
   echo_stderr "Validating pre-requisites...."
   validatePrereq
 
   # spaces matter :)
   if [[ $AWS_CLI_VERSION =~ ^2 ]] ; then
-    echo_stderr "Select AWS Profile"
-    if [ -z ${profile+x} ]; then
-      profile=$(aws configure list-profiles|peco --on-cancel=error --select-1 --prompt="AWS Profile:")
-    fi
-    colorEcho Profile: $profile
+    echo_stderr "Select AWS Profile."
+    profile=`selectProfile`
+    colorEcho profile: $profile
   else echo_stderr "[INFO] AWS CLI is not v2, unable to select profile. --region or --profile must be set."
   fi
   echo_stderr
 
   echo_stderr "Select cluster."
-  cluster=$(aws ecs list-clusters $(params)|jq -r ".clusterArns[]"|sort|cut -d "/" -f 2|peco --on-cancel=error --select-1 --prompt="Cluster:")
-  colorEcho Cluster: $cluster
+  cluster=`selectCluster`
+  colorEcho cluster: $cluster
   echo_stderr
 
   echo_stderr "Select service."
-  service=$(aws ecs list-services $(params) --cluster $cluster|jq -r ".serviceArns[]"|sort|peco --on-cancel=error --select-1 --prompt="Service:")
-  colorEcho Service: $service
+  service=`selectService`
+  colorEcho service: $service
   echo_stderr
 
   echo_stderr "Select task."
-  task=$(aws ecs list-tasks $(params) --cluster $cluster --service-name $service --desired-status RUNNING |jq -r '.taskArns[]'|sort|peco --on-cancel=error --select-1 --prompt="Task:")
-  colorEcho Task: $task
+  task=`selectTask`
+  colorEcho task: $task
   echo_stderr
 
   echo_stderr "Select container."
-  container=$(aws ecs describe-tasks $(params) --cluster $cluster --tasks $task | jq -r ".tasks[].containers[].name"|sort|peco --on-cancel=error --select-1 --prompt="Container:")
-  colorEcho Container: $container
+  container=`selectContainer`
+  colorEcho container: $container
   echo_stderr
 
   # Both port and localPort parameters are not supplied.
