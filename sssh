@@ -93,12 +93,12 @@ Example:
 ./sssh --region us-west-2
 ./sssh --profile default
 Supported input parameters:
- -r | --region     : AWS Region to fetch the cluster, service, task
- -p | --profile    : AWS Profile for credentials and region.
- -c | --command    : Command to execute, defaults to '/bin/sh'/
-      --port       : Port number for port forward.
-      --local-port : Local port number for port forward.
-      --rds-host   : Rds host name to port forward.
+ -r | --region      : AWS Region to fetch the cluster, service, task
+ -p | --profile     : AWS Profile for credentials and region.
+ -c | --command     : Command to execute, defaults to '/bin/sh'/
+      --port        : Port number for port forward.
+      --local-port  : Local port number for port forward.
+      --remote-host : Remote host name for port forward.
 
 The default command executed on the selected container is '/bin/sh'.
 If a region is not provided, the script will attempt to use your region set in the profile.
@@ -146,9 +146,9 @@ main(){
         localPort="${1:?local-port must be specified in --local-port}"
         shift
         ;;
-      --rds-host)
+      --remote-host)
         shift
-        rdsHost="${1:?rds-host must be specified in --rds-host}"
+        remoteHost="${1:?remote-host must be specified in --remote-host}"
         shift
         ;;
       *)
@@ -194,16 +194,16 @@ main(){
   echo_stderr
 
   # Both port and localPort parameters are not supplied.
-  if [ -z ${port+x} ] && [ -z ${localPort+x} ] && [ -z ${rdsHost+x} ]; then
+  if [ -z ${port+x} ] && [ -z ${localPort+x} ] && [ -z ${remoteHost+x} ]; then
     cmd="aws ecs execute-command $(params) --cluster $cluster --container $container --task $task --interactive --command '$command'"
-  elif [ -n ${port+x} ] && [ -n ${localPort+x} ] && [ -z ${rdsHost+x} ]; then
+  elif [ -n ${port+x} ] && [ -n ${localPort+x} ] && [ -z ${remoteHost+x} ]; then
     taskId=$(echo $task | awk -F '/' '{print $3}')
     containerId=$(aws ecs describe-tasks $(params) --cluster $cluster --task $task | jq -r --arg container $container '.tasks[0].containers[] | select(.name == $container).runtimeId')
     cmd="aws ssm start-session $(params) --target ecs:${cluster}_${taskId}_${containerId} --document-name AWS-StartPortForwardingSession --parameters {\"portNumber\":[\"$port\"],\"localPortNumber\":[\"$localPort\"]}"
   else
     taskId=$(echo $task | awk -F '/' '{print $3}')
     containerId=$(aws ecs describe-tasks $(params) --cluster $cluster --task $task | jq -r --arg container $container '.tasks[0].containers[] | select(.name == $container).runtimeId')
-    cmd="aws ssm start-session $(params) --target ecs:${cluster}_${taskId}_${containerId} --document-name AWS-StartPortForwardingSessionToRemoteHost --parameters {\"host\":[\"$rdsHost\"],\"portNumber\":[\"$port\"],\"localPortNumber\":[\"$localPort\"]}"
+    cmd="aws ssm start-session $(params) --target ecs:${cluster}_${taskId}_${containerId} --document-name AWS-StartPortForwardingSessionToRemoteHost --parameters {\"host\":[\"$remoteHost\"],\"portNumber\":[\"$port\"],\"localPortNumber\":[\"$localPort\"]}"
   fi
 
   colorEcho $cmd
