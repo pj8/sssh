@@ -96,7 +96,7 @@ Supported input parameters:
  -r | --region      : AWS Region to fetch the cluster, service, task
  -p | --profile     : AWS Profile for credentials and region.
  -c | --command     : Command to execute, defaults to '/bin/sh'/
-      --port        : Port number for port forward.
+      --remote-port : Remote port number for port forward.
       --local-port  : Local port number for port forward.
       --remote-host : Remote host name for port forward.
 
@@ -136,9 +136,9 @@ main(){
         command="${1:?Command must be specified in --command}"
         shift
         ;;
-      --port)
+      --remote-port)
         shift
-        port="${1:?port must be specified in --port}"
+        remotePort="${1:?remote-port must be specified in --remote-port}"
         shift
         ;;
       --local-port)
@@ -193,13 +193,13 @@ main(){
   colorEcho Container: $container
   echo_stderr
 
-  # Both port and localPort parameters are not supplied.
-  if [ -z ${port+x} ] && [ -z ${localPort+x} ] && [ -z ${remoteHost+x} ]; then
+  # None of the remotePort, localPort, remoteHost parameters are supplied.
+  if [ -z ${remotePort+x} ] && [ -z ${localPort+x} ] && [ -z ${remoteHost+x} ]; then
     cmd="aws ecs execute-command $(params) --cluster $cluster --container $container --task $task --interactive --command '$command'"
   else
     taskId=$(echo $task | awk -F '/' '{print $3}')
     containerId=$(aws ecs describe-tasks $(params) --cluster $cluster --task $task | jq -r --arg container $container '.tasks[0].containers[] | select(.name == $container).runtimeId')
-    cmd="aws ssm start-session $(params) --target ecs:${cluster}_${taskId}_${containerId} --document-name AWS-StartPortForwardingSessionToRemoteHost --parameters {\"host\":[\"${remoteHost:-"127.0.0.1"}\"],\"portNumber\":[\"${port-"3306"}\"],\"localPortNumber\":[\"$localPort\"]}"
+    cmd="aws ssm start-session $(params) --target ecs:${cluster}_${taskId}_${containerId} --document-name AWS-StartPortForwardingSessionToRemoteHost --parameters {\"host\":[\"${remoteHost:-"127.0.0.1"}\"],\"portNumber\":[\"${remotePort-"3306"}\"],\"localPortNumber\":[\"$localPort\"]}"
   fi
 
   colorEcho $cmd
