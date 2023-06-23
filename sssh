@@ -1,38 +1,5 @@
 #!/bin/bash
 
-############################################################################
-#   Copyright 2022 Yuki Adachi https://github.com/yuki777
-#
-#   Licensed under the Apache License, Version 2.0 (the "License");
-#   you may not use this file except in compliance with the License.
-#   You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-#   Unless required by applicable law or agreed to in writing, software
-#   distributed under the License is distributed on an "AS IS" BASIS,
-#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-#   See the License for the specific language governing permissions and
-#   limitations under the License.
-############################################################################
-
-# Bash script to run ecs-exec on Amazon ECS Fargate containers.
-#
-# Usage: See --help.
-#
-# Installation and Update: Download the script and `chmod u+x the script`.
-#  curl "https://gist.githubusercontent.com/yuki777/e6feba842934e3100ecd45370969a9a9/raw/sssh?clearCache=`date +%Y%m%d%H%M%S`" -o sssh && chmod u+x sssh
-#  ./sssh
-#
-# Prerequisites (validated)
-# - aws cli
-# - session-manager-plugin
-# - jq
-# - peco
-#
-# Special thanks to contributor
-# - leewc
-
 set -eu
 
 params(){
@@ -96,16 +63,15 @@ Supported input parameters:
  -r | --region      : AWS Region to fetch the cluster, service, task
  -p | --profile     : AWS Profile for credentials and region.
  -c | --command     : Command to execute, defaults to '/bin/sh'/
+      --remote-host : Remote host name for port forward.
       --remote-port : Remote port number for port forward.
       --local-port  : Local port number for port forward.
-      --remote-host : Remote host name for port forward.
 
 The default command executed on the selected container is '/bin/sh'.
 If a region is not provided, the script will attempt to use your region set in the profile.
 If you want to execute a different command or shell, you can pass it in like so:
 ./sssh --command '/bin/bash'
 You need active (unexpired) AWS credentials, otherwise, the script will crash.
-Updates on https://gist.github.com/yuki777/e6feba842934e3100ecd45370969a9a9
 END
 }
 
@@ -136,6 +102,11 @@ main(){
         command="${1:?Command must be specified in --command}"
         shift
         ;;
+      --remote-host)
+        shift
+        remoteHost="${1:?remote-host must be specified in --remote-host}"
+        shift
+        ;;
       --remote-port)
         shift
         remotePort="${1:?remote-port must be specified in --remote-port}"
@@ -144,11 +115,6 @@ main(){
       --local-port)
         shift
         localPort="${1:?local-port must be specified in --local-port}"
-        shift
-        ;;
-      --remote-host)
-        shift
-        remoteHost="${1:?remote-host must be specified in --remote-host}"
         shift
         ;;
       *)
@@ -199,7 +165,7 @@ main(){
   else
     taskId=$(echo $task | awk -F '/' '{print $3}')
     containerId=$(aws ecs describe-tasks $(params) --cluster $cluster --task $task | jq -r --arg container $container '.tasks[0].containers[] | select(.name == $container).runtimeId')
-    cmd="aws ssm start-session $(params) --target ecs:${cluster}_${taskId}_${containerId} --document-name AWS-StartPortForwardingSessionToRemoteHost --parameters {\"host\":[\"${remoteHost:-"127.0.0.1"}\"],\"portNumber\":[\"${remotePort-"3306"}\"],\"localPortNumber\":[\"$localPort\"]}"
+    cmd="aws ssm start-session $(params) --target ecs:${cluster}_${taskId}_${containerId} --document-name AWS-StartPortForwardingSessionToRemoteHost --parameters {\"host\":[\"${remoteHost:-"127.0.0.1"}\"],\"portNumber\":[\"${remotePort:-"3306"}\"],\"localPortNumber\":[\"$localPort\"]}"
   fi
 
   colorEcho $cmd
