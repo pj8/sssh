@@ -98,7 +98,7 @@ Supported input parameters:
  -c | --command    : Command to execute, defaults to '/bin/sh'/
       --port       : Port number for port forward.
       --local-port : Local port number for port forward.
-      --rds-host   : Rds host name to port forward..
+      --rds-host   : Rds host name to port forward.
 
 The default command executed on the selected container is '/bin/sh'.
 If a region is not provided, the script will attempt to use your region set in the profile.
