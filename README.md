@@ -9,6 +9,18 @@ cd sssh
 ./sssh
 ```
 
+## Usage
+```bash
+# Select profile, cluster, service, container, and task, and run sh
+./sssh
+
+# Run port forwarding
+./sssh --remote-host rds.example.com --remote-port 3306 --local-port 13306
+
+# Help
+./sssh --help
+```
+
 ## Prerequisites
 - [AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html)
 - [Session Manager plugin for the AWS CLI](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html)
