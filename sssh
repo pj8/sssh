@@ -40,18 +40,6 @@ die() {
   exit 1
 }
 
-validatePrereq() {
-  command -v peco  &>/dev/null || die "peco not installed on host. Please install peco. See https://github.com/peco/peco#installation"
-  command -v jq  &>/dev/null || die "jq not installed on host. Please install jq. See https://stedolan.github.io/jq/download/"
-  command -v session-manager-plugin &>/dev/null || die "session-manager-plugin not installed. See https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html"
-  command -v aws &>/dev/null || die "AWS CLI not found, AWS CLI version 1.16.12 or later must be installed. See https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html"
-  # Checks if AWS CLI is outdated or not., v1 of AWS CLI pipes to std error, redirect
-  AWS_CLI_VERSION=$(aws --version 2>&1 | awk '{ print $1 }' | cut -d/ -f2)
-  echo_stderr "You have AWS CLI v$AWS_CLI_VERSION installed."
-  # Do a best effort check for v1 (so that it's at least 1.10 and up.
-  [[ $AWS_CLI_VERSION =~ ^1.1[0-9] || $AWS_CLI_VERSION =~ ^2 ]] &>/dev/null || die "AWS CLI version 1.16.12 or later must be installed to support ecs-exec, Run 'aws --version' to see what you have. See https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html"
-}
-
 function print_help() {
   cat >&2 <<-END
 This script simplifies the process of getting the required information to drop into an
@@ -97,6 +85,11 @@ main(){
         profile="${1:?Profile must be specified in --profile}"
         shift
         ;;
+      -o|--otp)
+        shift
+        otp="${1:?OTP must be specified in --otp}"
+        shift
+        ;;
       -c|--command)
         shift
         command="${1:?Command must be specified in --command}"
@@ -125,22 +118,22 @@ main(){
 
   date
 
-  echo_stderr "Validating pre-requisites...."
-  validatePrereq
-
-  # spaces matter :)
-  if [[ $AWS_CLI_VERSION =~ ^2 ]] ; then
-    echo_stderr "Select AWS Profile"
-    if [ -z ${profile+x} ]; then
-      profile=$(aws configure list-profiles|peco --on-cancel=error --select-1 --prompt="AWS Profile:")
-    fi
-    colorEcho Profile: $profile
-  else echo_stderr "[INFO] AWS CLI is not v2, unable to select profile. --region or --profile must be set."
+  echo_stderr "Select AWS Profile"
+  if [ -z ${profile+x} ]; then
+    profile=$(aws configure list-profiles|peco --on-cancel=error --select-1 --prompt="AWS Profile:")
   fi
+  colorEcho Profile: $profile
   echo_stderr
 
+  script_dir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
   echo_stderr "Select cluster."
-  cluster=$(aws ecs list-clusters $(params)|jq -r ".clusterArns[]"|sort|cut -d "/" -f 2|peco --on-cancel=error --select-1 --prompt="Cluster:")
+  params_result=$(params)
+  clusters=$("$script_dir/list-clusters.expect" "$params_result" "${otp:-}" | tail -n +2)
+  temp_file=$(mktemp)
+  echo "[" > $temp_file
+  echo "$clusters" | grep -e 'arn:aws:ecs' | tr -d '\r' | sed -e 's/\r//g' -e 's/\x1B\[[0-9;]*[a-zA-Z]//g' -e 's/\^\[\[[?][0-9]*[hl]//g' -e 's/\^\[[=>]//g' -e 's/\^\[\[m//g' >> $temp_file
+  echo "]" >> $temp_file
+  cluster=$(cat $temp_file | jq -r ".[]" | sort | cut -d "/" -f 2 | peco --on-cancel=error --select-1 --prompt="Cluster:")
   colorEcho Cluster: $cluster
   echo_stderr
 
