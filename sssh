@@ -125,15 +125,19 @@ main(){
   colorEcho Profile: $profile
   echo_stderr
 
-  script_dir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
   echo_stderr "Select cluster."
-  params_result=$(params)
-  clusters=$("$script_dir/list-clusters.expect" "$params_result" "${otp:-}" | tail -n +2)
-  temp_file=$(mktemp)
-  echo "[" > $temp_file
-  echo "$clusters" | grep -e 'arn:aws:ecs' | tr -d '\r' | sed -e 's/\r//g' -e 's/\x1B\[[0-9;]*[a-zA-Z]//g' -e 's/\^\[\[[?][0-9]*[hl]//g' -e 's/\^\[[=>]//g' -e 's/\^\[\[m//g' >> $temp_file
-  echo "]" >> $temp_file
-  cluster=$(cat $temp_file | jq -r ".[]" | sort | cut -d "/" -f 2 | peco --on-cancel=error --select-1 --prompt="Cluster:")
+  if [ -z ${otp:-} ]; then
+    cluster=$(aws ecs list-clusters $(params)|jq -r ".clusterArns[]"|sort|cut -d "/" -f 2|peco --on-cancel=error --select-1 --prompt="Cluster:")
+  else
+    script_dir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
+    params_result=$(params)
+    clusters=$("$script_dir/list-clusters.expect" "$params_result" "${otp:-}" | tail -n +2)
+    temp_file=$(mktemp)
+    echo "[" > $temp_file
+    echo "$clusters" | grep -e 'arn:aws:ecs' | tr -d '\r' | sed -e 's/\r//g' -e 's/\x1B\[[0-9;]*[a-zA-Z]//g' -e 's/\^\[\[[?][0-9]*[hl]//g' -e 's/\^\[[=>]//g' -e 's/\^\[\[m//g' >> $temp_file
+    echo "]" >> $temp_file
+    cluster=$(cat $temp_file | jq -r ".[]" | sort | cut -d "/" -f 2 | peco --on-cancel=error --select-1 --prompt="Cluster:")
+  fi
   colorEcho Cluster: $cluster
   echo_stderr
 
