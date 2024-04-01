@@ -2,6 +2,12 @@
 ## About
 - Bash script to run ecs-exec on Amazon ECS Fargate containers.
 
+## Dependencies
+- peco
+- jq
+- session-manager-plugin
+- aws
+
 ## Install
 ```bash
 git clone https://github.com/pj8/sssh.git
@@ -16,6 +22,9 @@ cd sssh
 
 # Run port forwarding
 ./sssh --remote-host rds.example.com --remote-port 3306 --local-port 13306
+
+# Specify OTP for MFA authentication
+./sssh --profile foo-profile --otp 123456
 
 # Help
 ./sssh --help
