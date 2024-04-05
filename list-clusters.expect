@@ -1,0 +1,22 @@
+#!/usr/bin/expect -f
+
+# コマンドライン引数からパラメータを取得
+set params [lindex $argv 0]
+set otp [lindex $argv 1]
+
+# タイムアウト設定
+set timeout 20
+
+# AWS CLIコマンド実行
+spawn bash -c "/usr/local/bin/aws ecs list-clusters $params"
+
+# MFA入力プロンプトを待つ
+expect {
+    # MFA入力を求めるプロンプトがあれば、MFAコードを送信
+    "*MFA code*" {
+        send "$otp\r"
+        exp_continue
+    }
+    # コマンドの実行が完了したら終了
+    eof
+}
