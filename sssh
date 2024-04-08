@@ -72,7 +72,7 @@ main(){
         exit
         ;;
       -v|--version)
-        echo "sssh version v2.15"
+        echo "sssh version v4.0.0"
         exit
         ;;
       -r|--region)
