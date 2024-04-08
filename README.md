@@ -29,6 +29,7 @@ cd sssh
 # Help
 ./sssh --help
 ```
+**Note**: Before running the script, ensure that your AWS CLI session profile is configured to output in JSON format. Otherwise, the script will crash. You can set the output format as JSON when you run `aws configure sso`.
 
 ## Special thanks to contributor
 - [leewc](https://github.com/leewc)
