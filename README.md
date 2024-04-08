@@ -34,3 +34,4 @@ cd sssh
 ## Special thanks to contributor
 - [leewc](https://github.com/leewc)
 - [bamkuhen](https://github.com/bamkuhen)
+- [florianfelsing](https://github.com/florianfelsing)
