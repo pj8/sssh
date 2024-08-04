@@ -51,10 +51,13 @@ Supported input parameters:
  -r | --region      : AWS Region to fetch the cluster, service, task
  -p | --profile     : AWS Profile for credentials and region.
  -c | --command     : Command to execute, defaults to '/bin/sh'/
+      --cluster     : Cluster name.
+      --service     : Service name.
+      --task        : Task name.
+      --container   : Container name.
       --remote-host : Remote host name for port forward.
       --remote-port : Remote port number for port forward.
       --local-port  : Local port number for port forward.
-
 The default command executed on the selected container is '/bin/sh'.
 If a region is not provided, the script will attempt to use your region set in the profile.
 If you want to execute a different command or shell, you can pass it in like so:
@@ -95,22 +98,7 @@ main(){
         command="${1:?Command must be specified in --command}"
         shift
         ;;
-      --remote-host)
-        shift
-        remoteHost="${1:?remote-host must be specified in --remote-host}"
-        shift
-        ;;
-      --remote-port)
-        shift
-        remotePort="${1:?remote-port must be specified in --remote-port}"
-        shift
-        ;;
-      --local-port)
-        shift
-        localPort="${1:?local-port must be specified in --local-port}"
-        shift
-        ;;
-  --cluster)
+      --cluster)
         shift
         cluster="${1:?Cluster must be specified in --cluster}"
         shift
@@ -128,6 +116,21 @@ main(){
       --container)
         shift
         container="${1:?Container must be specified in --container}"
+        shift
+        ;;
+      --remote-host)
+        shift
+        remoteHost="${1:?remote-host must be specified in --remote-host}"
+        shift
+        ;;
+      --remote-port)
+        shift
+        remotePort="${1:?remote-port must be specified in --remote-port}"
+        shift
+        ;;
+      --local-port)
+        shift
+        localPort="${1:?local-port must be specified in --local-port}"
         shift
         ;;
       *)
