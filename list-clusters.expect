@@ -8,7 +8,7 @@ set otp [lindex $argv 1]
 set timeout 20
 
 # AWS CLIコマンド実行
-spawn bash -c "/usr/local/bin/aws ecs list-clusters $params"
+spawn bash -c "aws ecs list-clusters $params"
 
 # MFA入力プロンプトを待つ
 expect {

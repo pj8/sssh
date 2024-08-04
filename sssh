@@ -51,10 +51,13 @@ Supported input parameters:
  -r | --region      : AWS Region to fetch the cluster, service, task
  -p | --profile     : AWS Profile for credentials and region.
  -c | --command     : Command to execute, defaults to '/bin/sh'/
+      --cluster     : Cluster name.
+      --service     : Service name.
+      --task        : Task name.
+      --container   : Container name.
       --remote-host : Remote host name for port forward.
       --remote-port : Remote port number for port forward.
       --local-port  : Local port number for port forward.
-
 The default command executed on the selected container is '/bin/sh'.
 If a region is not provided, the script will attempt to use your region set in the profile.
 If you want to execute a different command or shell, you can pass it in like so:
@@ -95,6 +98,26 @@ main(){
         command="${1:?Command must be specified in --command}"
         shift
         ;;
+      --cluster)
+        shift
+        cluster="${1:?Cluster must be specified in --cluster}"
+        shift
+        ;;
+      --service)
+        shift
+        service="${1:?Service must be specified in --service}"
+        shift
+        ;;
+      --task)
+        shift
+        task="${1:?Task must be specified in --task}"
+        shift
+        ;;
+      --container)
+        shift
+        container="${1:?Container must be specified in --container}"
+        shift
+        ;;
       --remote-host)
         shift
         remoteHost="${1:?remote-host must be specified in --remote-host}"
@@ -126,33 +149,41 @@ main(){
   echo_stderr
 
   echo_stderr "Select cluster."
-  if [ -z ${otp:-} ]; then
-    cluster=$(aws ecs list-clusters $(params)|jq -r ".clusterArns[]"|sort|cut -d "/" -f 2|peco --on-cancel=error --select-1 --prompt="Cluster:")
-  else
-    script_dir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
-    params_result=$(params)
-    clusters=$("$script_dir/list-clusters.expect" "$params_result" "${otp:-}" | tail -n +2)
-    temp_file=$(mktemp)
-    echo "[" > $temp_file
-    echo "$clusters" | grep -e 'arn:aws:ecs' | tr -d '\r' | sed -e 's/\r//g' -e 's/\x1B\[[0-9;]*[a-zA-Z]//g' -e 's/\^\[\[[?][0-9]*[hl]//g' -e 's/\^\[[=>]//g' -e 's/\^\[\[m//g' >> $temp_file
-    echo "]" >> $temp_file
-    cluster=$(cat $temp_file | jq -r ".[]" | sort | cut -d "/" -f 2 | peco --on-cancel=error --select-1 --prompt="Cluster:")
+  if [ -z ${cluster+x} ]; then
+    if [ -z ${otp:-} ]; then
+      cluster=$(aws ecs list-clusters $(params)|jq -r ".clusterArns[]"|sort|cut -d "/" -f 2|peco --on-cancel=error --select-1 --prompt="Cluster:")
+    else
+      script_dir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
+      params_result=$(params)
+      clusters=$("$script_dir/list-clusters.expect" "$params_result" "${otp:-}" | tail -n +2)
+      temp_file=$(mktemp)
+      echo "[" > $temp_file
+      echo "$clusters" | grep -e 'arn:aws:ecs' | tr -d '\r' | sed -e 's/\r//g' -e 's/\x1B\[[0-9;]*[a-zA-Z]//g' -e 's/\^\[\[[?][0-9]*[hl]//g' -e 's/\^\[[=>]//g' -e 's/\^\[\[m//g' >> $temp_file
+      echo "]" >> $temp_file
+      cluster=$(cat $temp_file | jq -r ".[]" | sort | cut -d "/" -f 2 | peco --on-cancel=error --select-1 --prompt="Cluster:")
+    fi
   fi
   colorEcho Cluster: $cluster
   echo_stderr
 
   echo_stderr "Select service."
-  service=$(aws ecs list-services $(params) --cluster $cluster|jq -r ".serviceArns[]"|sort|peco --on-cancel=error --select-1 --prompt="Service:")
+  if [ -z ${service+x} ]; then
+    service=$(aws ecs list-services $(params) --cluster $cluster|jq -r ".serviceArns[]"|sort|peco --on-cancel=error --select-1 --prompt="Service:")
+  fi
   colorEcho Service: $service
   echo_stderr
 
   echo_stderr "Select task."
-  task=$(aws ecs list-tasks $(params) --cluster $cluster --service-name $service --desired-status RUNNING |jq -r '.taskArns[]'|sort|peco --on-cancel=error --select-1 --prompt="Task:")
+  if [ -z ${task+x} ]; then
+    task=$(aws ecs list-tasks $(params) --cluster $cluster --service-name $service --desired-status RUNNING |jq -r '.taskArns[]'|sort|peco --on-cancel=error --select-1 --prompt="Task:")
+  fi
   colorEcho Task: $task
   echo_stderr
 
   echo_stderr "Select container."
-  container=$(aws ecs describe-tasks $(params) --cluster $cluster --tasks $task | jq -r ".tasks[].containers[].name"|sort|peco --on-cancel=error --select-1 --prompt="Container:")
+  if [ -z ${container+x} ]; then
+    container=$(aws ecs describe-tasks $(params) --cluster $cluster --tasks $task | jq -r ".tasks[].containers[].name"|sort|peco --on-cancel=error --select-1 --prompt="Container:")
+  fi
   colorEcho Container: $container
   echo_stderr
 
