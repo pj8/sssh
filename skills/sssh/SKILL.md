@@ -12,10 +12,12 @@ description: Amazon ECS Fargate のコンテナへ ECS Exec で接続すると�
 
 引数で指定しなかった項目は peco による対話選択になる（候補が1つなら自動選択される）。
 Coding Agent が非対話で実行する場合は、必要な項目をすべて引数で指定すること。
+MFA が必要な場合は、先に対話端末の AWS CLI 等で認証を済ませ、有効な認証情報を用意する。
 
 ## 前提条件
 
 - AWS CLI / Session Manager plugin / jq / peco がインストール済みであること
+- `--otp` でクラスタ一覧を取得する場合は `/usr/bin/expect` が必要
 - 使用する AWS CLI プロファイルの output 形式が `json` であること
 - 有効期限内の AWS 認証情報があること
 
@@ -28,9 +30,13 @@ Coding Agent が非対話で実行する場合は、必要な項目をすべて�
 # プロファイルとリージョンを指定
 ./sssh --profile my-profile --region ap-northeast-1
 
-# MFA（多要素認証）が必要なプロファイルでは OTP（ワンタイムパスワード）を渡す
+# クラスタ一覧取得時の MFA 入力に OTP を渡す（--cluster は省略）
 ./sssh --profile my-profile --otp 123456
 ```
+
+`--otp` は `--cluster` 省略時のクラスタ一覧取得でのみ使われ、
+`--cluster` を指定すると無視される。上の例は認証後に対話選択・シェル起動へ進むため、
+非対話実行の認証準備には対話端末の AWS CLI 等を使う。
 
 ## クラスタ・サービス・コンテナを指定した接続
 
@@ -54,7 +60,10 @@ TASK_ARN=$(aws ecs list-tasks --profile my-profile --cluster my-cluster \
 ## コマンド実行
 
 `--command` を指定すると、コマンドは `/bin/sh -c ...` でラップされて実行される。
-パイプ・リダイレクト・変数展開はそのまま書けて、リモートコマンドの終了コードが
+パイプ・リダイレクトはそのまま書ける。リモート側で変数展開する場合は、
+コマンド全体を単一引用符で囲むか、`$` をエスケープする。
+`--command "echo $HOSTNAME"` ではローカルシェルが先に変数を展開してしまう。
+リモートコマンドの終了コードが
 `sssh` の終了コードになる（v5.0.0以降）。成否判定が必要な自動処理にも使える。
 
 ```bash
@@ -66,19 +75,26 @@ TASK_ARN=$(aws ecs list-tasks --profile my-profile --cluster my-cluster \
 ./sssh --profile my-profile --cluster my-cluster --service my-service \
        --task "$TASK_ARN" --container app --command "php -v | head -n 1"
 
+# リモート側の環境変数を展開する（ローカルでは展開しない）
+./sssh --profile my-profile --cluster my-cluster --service my-service \
+       --task "$TASK_ARN" --container app --command 'echo "$HOSTNAME"'
+
 # リモートコマンドの終了コードが伝搬される
 ./sssh --profile my-profile --cluster my-cluster --service my-service \
        --task "$TASK_ARN" --container app --command 'exit 7' ; echo $?  # => 7
 ```
 
 情報メッセージ（日時、選択結果、実行コマンドライン）はすべて stderr に出力され、
-stdout にはリモートコマンドの出力だけが流れる。そのため
-`./sssh --command 'php -v' | grep PHP` のようなパイプ処理がそのまま動く。
+stdout にはリモートコマンドの出力と AWS CLI / Session Manager 由来のメッセージが流れる。
+上の全項目指定のコマンドに `| grep PHP` などを付けて、ローカルで出力を絞り込める。
+ただし、`pipefail` 未設定時の `$?` はパイプ末尾の `grep` 等の終了コードになる。
+`sssh` の終了コードで成否を判定する自動処理では、パイプせずに実行する。
 
 ## ポートフォワード
 
-`--remote-host` `--remote-port` `--local-port` を指定すると、選択したコンテナ経由で
-リモートホストへのポートフォワードを開始する。
+`--remote-host` `--remote-port` `--local-port` のいずれかを指定すると、
+ポートフォワードの処理に入る。`--local-port` は必須で、未指定だと失敗する。
+`--remote-host` の省略時は `127.0.0.1`（コンテナ側）、`--remote-port` の省略時は `3306` を使う。
 
 ```bash
 # localhost:13306 -> rds.example.com:3306
@@ -96,14 +112,14 @@ stdout にはリモートコマンドの出力だけが流れる。そのため
 | `-p`, `--profile` | AWS プロファイル |
 | `-r`, `--region` | AWS リージョン（省略時はプロファイルの設定を使用） |
 | `-c`, `--command` | 実行するコマンド（デフォルト: `/bin/sh`） |
-| `-o`, `--otp` | MFA 用のワンタイムパスワード |
+| `-o`, `--otp` | クラスタ一覧取得時の MFA 用 OTP（`--cluster` 指定時は無視） |
 | `--cluster` | クラスタ名 |
 | `--service` | サービス名 |
 | `--task` | タスク名（ARN） |
 | `--container` | コンテナ名 |
-| `--remote-host` | ポートフォワード先のリモートホスト名 |
-| `--remote-port` | ポートフォワード先のリモートポート番号 |
-| `--local-port` | ポートフォワードで使うローカルポート番号 |
+| `--remote-host` | ポートフォワード先のホスト名（省略時: `127.0.0.1`） |
+| `--remote-port` | ポートフォワード先のポート番号（省略時: `3306`） |
+| `--local-port` | ポートフォワードで使うローカルポート番号（ポートフォワード時は必須） |
 | `-h`, `--help` | ヘルプ表示 |
 | `-v`, `--version` | バージョン表示 |
 
