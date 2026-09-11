@@ -48,7 +48,9 @@ cd sssh
 
 **Note**: ECS Exec runs the remote command on a PTY (pseudo-terminal) inside the SSM agent, so stdout is text-oriented (e.g. `\n` may be translated to `\r\n`). Binary output such as tar/gzip streams is NOT preserved — this is an ECS Exec limitation, not a limitation of `sssh`. Transfer files via S3 or similar instead.
 
-**Note**: Since v5.0.0, all informational messages (date, Profile/Cluster/Service/Task/Container, the executed command line) go to stderr. stdout carries only the output of the remote command, so `./sssh --command 'php -v' | grep PHP` works as expected.
+**Note**: Since v5.0.0, all informational messages from sssh (date, Profile/Cluster/Service/Task/Container, the executed command line) go to stderr. stdout carries the remote command's output as well as messages from AWS CLI / Session Manager. Filter the output as needed, for example with `./sssh --command 'php -v' | grep PHP`.
+
+**Note**: Without `pipefail`, `$?` after this pipeline reports `grep`'s exit code. For automation that needs sssh's exit code, run sssh without piping its output.
 
 **Note**: Do not embed passwords or tokens in `--command`. The command line is shown on screen, kept in your local shell history, and recorded in CloudTrail; with ECS Exec logging enabled it may also be stored in CloudWatch Logs / S3.
 

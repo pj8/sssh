@@ -87,6 +87,8 @@ TASK_ARN=$(aws ecs list-tasks --profile my-profile --cluster my-cluster \
 情報メッセージ（日時、選択結果、実行コマンドライン）はすべて stderr に出力され、
 stdout にはリモートコマンドの出力と AWS CLI / Session Manager 由来のメッセージが流れる。
 上の全項目指定のコマンドに `| grep PHP` などを付けて、ローカルで出力を絞り込める。
+ただし、`pipefail` 未設定時の `$?` はパイプ末尾の `grep` 等の終了コードになる。
+`sssh` の終了コードで成否を判定する自動処理では、パイプせずに実行する。
 
 ## ポートフォワード
 
